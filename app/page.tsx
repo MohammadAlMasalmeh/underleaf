@@ -6,11 +6,10 @@ import { useTheme } from "@/components/ThemeProvider";
 import { useAuth } from "@/components/AuthProvider";
 import { useProjects } from "@/components/ProjectsProvider";
 import TypingLogo from "@/components/TypingLogo";
-import type { TabData } from "@/lib/storage";
+import { type ProjectData, getFiles } from "@/lib/storage";
 
 function formatLastModified(updatedAt?: number): string {
   if (updatedAt == null) return "—";
-  const d = new Date(updatedAt);
   const now = Date.now();
   const diffMs = now - updatedAt;
   const diffM = Math.floor(diffMs / 60000);
@@ -20,15 +19,18 @@ function formatLastModified(updatedAt?: number): string {
   if (diffM < 60) return `${diffM} min ago`;
   if (diffH < 24) return `${diffH} hour${diffH === 1 ? "" : "s"} ago`;
   if (diffD < 7) return `${diffD} day${diffD === 1 ? "" : "s"} ago`;
-  return d.toLocaleDateString();
+  return new Date(updatedAt).toLocaleDateString();
 }
 
-function downloadTex(tab: TabData) {
-  const blob = new Blob([tab.source], { type: "text/plain;charset=utf-8" });
+function downloadProject(project: ProjectData) {
+  const files = getFiles(project.files);
+  const mainFile = files.find((f) => f.id === project.mainFileId) ?? files[0];
+  if (!mainFile) return;
+  const blob = new Blob([mainFile.source], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = tab.name.endsWith(".tex") ? tab.name : `${tab.name}.tex`;
+  a.download = mainFile.name.endsWith(".tex") ? mainFile.name : `${mainFile.name}.tex`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -36,7 +38,7 @@ function downloadTex(tab: TabData) {
 export default function HomePage() {
   const { theme, toggleTheme } = useTheme();
   const { user, isLoading: authLoading, signInWithGoogle, signInWithEmail, signOut } = useAuth();
-  const { tabs, setTabs, persistTabs, isReady, isCloud } = useProjects();
+  const { projects, setProjects, persistProjects, isReady, isCloud } = useProjects();
   const [filter, setFilter] = useState<"all" | "yours">("all");
   const [search, setSearch] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -51,40 +53,39 @@ export default function HomePage() {
     if (editingId) renameInputRef.current?.focus();
   }, [editingId]);
 
-  const filteredDocs = useMemo(() => {
+  const filteredProjects = useMemo(() => {
     if (!isReady) return [];
-    let list = tabs;
-    if (filter === "yours") list = list; // same for now; could filter by "owner" later
+    let list = projects;
     if (search.trim()) {
       const q = search.trim().toLowerCase();
-      list = list.filter((d) => d.name.toLowerCase().includes(q));
+      list = list.filter((p) => p.name.toLowerCase().includes(q));
     }
     return list;
-  }, [tabs, filter, search, isReady]);
+  }, [projects, filter, search, isReady]);
 
-  const removeDoc = (e: React.MouseEvent, id: string) => {
+  const removeProject = (e: React.MouseEvent, id: string) => {
     e.preventDefault();
     e.stopPropagation();
-    const next = tabs.filter((t) => t.id !== id);
-    setTabs(next);
-    persistTabs(next);
+    const next = projects.filter((p) => p.id !== id);
+    setProjects(next);
+    persistProjects(next);
   };
 
-  const startRename = (e: React.MouseEvent, tab: TabData) => {
+  const startRename = (e: React.MouseEvent, project: ProjectData) => {
     e.preventDefault();
     e.stopPropagation();
-    setEditingId(tab.id);
-    setEditingName(tab.name);
+    setEditingId(project.id);
+    setEditingName(project.name);
   };
 
   const commitRename = () => {
     if (editingId == null) return;
-    const name = editingName.trim() || "main.tex";
-    const next = tabs.map((t) =>
-      t.id === editingId ? { ...t, name, updatedAt: Date.now() } : t
+    const name = editingName.trim() || "Untitled";
+    const next = projects.map((p) =>
+      p.id === editingId ? { ...p, name, updatedAt: Date.now() } : p
     );
-    setTabs(next);
-    persistTabs(next);
+    setProjects(next);
+    persistProjects(next);
     setEditingId(null);
     setEditingName("");
   };
@@ -301,12 +302,12 @@ export default function HomePage() {
             <div className="flex items-center justify-center py-16">
               <span className="text-sm text-zinc-500 dark:text-zinc-400">Loading…</span>
             </div>
-          ) : filteredDocs.length === 0 ? (
+          ) : filteredProjects.length === 0 ? (
             <div className="rounded-xl border border-dashed border-zinc-200 bg-white py-16 text-center dark:border-zinc-700 dark:bg-zinc-900/50">
               <p className="text-sm text-zinc-500 dark:text-zinc-400">
-              {tabs.length === 0 ? "No projects yet." : "No projects match your search."}
+              {projects.length === 0 ? "No projects yet." : "No projects match your search."}
               </p>
-              {tabs.length === 0 && (
+              {projects.length === 0 && (
                 <Link
                   href="/edit?new=1"
                   className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
@@ -328,22 +329,22 @@ export default function HomePage() {
                         <span className="sr-only">Select</span>
                       </th>
                       <th className="px-4 py-3 font-medium text-zinc-700 dark:text-zinc-300">Title</th>
-                      <th className="px-4 py-3 font-medium text-zinc-700 dark:text-zinc-300">Owner</th>
+                      <th className="px-4 py-3 font-medium text-zinc-700 dark:text-zinc-300">Files</th>
                       <th className="px-4 py-3 font-medium text-zinc-700 dark:text-zinc-300">Last modified</th>
                       <th className="w-36 px-4 py-3 font-medium text-zinc-700 dark:text-zinc-300">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredDocs.map((tab) => (
+                    {filteredProjects.map((project) => (
                       <tr
-                        key={tab.id}
+                        key={project.id}
                         className="group border-b border-zinc-100 last:border-0 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800/50"
                       >
                         <td className="px-4 py-3">
                           <span className="sr-only">Checkbox</span>
                         </td>
                         <td className="px-4 py-3">
-                          {editingId === tab.id ? (
+                          {editingId === project.id ? (
                             <input
                               ref={renameInputRef}
                               type="text"
@@ -359,22 +360,24 @@ export default function HomePage() {
                             />
                           ) : (
                             <Link
-                              href={`/edit?tab=${tab.id}`}
+                              href={`/edit?project=${project.id}`}
                               className="font-medium text-blue-600 hover:underline dark:text-blue-400"
                             >
-                              {tab.name}
+                              {project.name}
                             </Link>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-zinc-500 dark:text-zinc-400">You</td>
                         <td className="px-4 py-3 text-zinc-500 dark:text-zinc-400">
-                          {formatLastModified(tab.updatedAt)}
+                          {getFiles(project.files).length} file{getFiles(project.files).length !== 1 ? "s" : ""}
+                        </td>
+                        <td className="px-4 py-3 text-zinc-500 dark:text-zinc-400">
+                          {formatLastModified(project.updatedAt)}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1">
                             <button
                               type="button"
-                              onClick={(e) => startRename(e, tab)}
+                              onClick={(e) => startRename(e, project)}
                               className="rounded p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-zinc-300"
                               title="Rename"
                             >
@@ -387,7 +390,7 @@ export default function HomePage() {
                               type="button"
                               onClick={(e) => {
                                 e.preventDefault();
-                                downloadTex(tab);
+                                downloadProject(project);
                               }}
                               className="rounded p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-zinc-300"
                               title="Download source (.tex)"
@@ -397,7 +400,7 @@ export default function HomePage() {
                               </svg>
                             </button>
                             <Link
-                              href={`/edit?tab=${tab.id}`}
+                              href={`/edit?project=${project.id}`}
                               className="rounded p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-zinc-300"
                               title="Open project"
                             >
@@ -408,7 +411,7 @@ export default function HomePage() {
                             </Link>
                             <button
                               type="button"
-                              onClick={(e) => removeDoc(e, tab.id)}
+                              onClick={(e) => removeProject(e, project.id)}
                               className="rounded p-1.5 text-zinc-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30 dark:hover:text-red-400"
                               title="Delete"
                             >
@@ -425,7 +428,7 @@ export default function HomePage() {
                 </table>
               </div>
               <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
-                Showing {filteredDocs.length} out of {tabs.length} project{tabs.length !== 1 ? "s" : ""}.
+                Showing {filteredProjects.length} out of {projects.length} project{projects.length !== 1 ? "s" : ""}.
               </p>
             </>
           )}

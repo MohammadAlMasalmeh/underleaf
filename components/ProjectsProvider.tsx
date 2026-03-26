@@ -11,13 +11,21 @@ import {
 } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { createClient } from "@/lib/supabase/client";
-import { fetchProjects, saveProjects } from "@/lib/supabase/projects";
-import { loadTabs, saveTabs as saveTabsLocal, type TabData } from "@/lib/storage";
+import {
+  fetchProjects as fetchCloudProjects,
+  saveProjects as saveCloudProjects,
+} from "@/lib/supabase/projects";
+import {
+  migrateToProjects,
+  loadProjects,
+  saveProjects as saveProjectsLocal,
+  type ProjectData,
+} from "@/lib/storage";
 
 type ProjectsContextValue = {
-  tabs: TabData[];
-  setTabs: React.Dispatch<React.SetStateAction<TabData[]>>;
-  persistTabs: (tabs: TabData[]) => void;
+  projects: ProjectData[];
+  setProjects: React.Dispatch<React.SetStateAction<ProjectData[]>>;
+  persistProjects: (projects: ProjectData[]) => void;
   isReady: boolean;
   isCloud: boolean;
 };
@@ -26,7 +34,7 @@ const ProjectsContext = createContext<ProjectsContextValue | null>(null);
 
 export function ProjectsProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const [tabs, setTabs] = useState<TabData[]>([]);
+  const [projects, setProjects] = useState<ProjectData[]>([]);
   const [isReady, setIsReady] = useState(false);
   const supabaseRef = useRef(createClient());
 
@@ -34,38 +42,46 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!user) {
-      setTabs(loadTabs());
+      // Local mode: migrate old tabs → projects if needed
+      const local = migrateToProjects();
+      if (local.length > 0) {
+        setProjects(local);
+      } else {
+        setProjects(loadProjects());
+      }
       setIsReady(true);
       return;
     }
     const supabase = supabaseRef.current;
-    fetchProjects(supabase, user.id)
+    fetchCloudProjects(supabase, user.id)
       .then((cloud) => {
         if (cloud.length > 0) {
-          setTabs(cloud);
+          setProjects(cloud);
         } else {
-          const local = loadTabs();
+          // Try migrating local data to cloud
+          const local = migrateToProjects();
           if (local.length > 0) {
-            setTabs(local);
-            saveProjects(supabase, user.id, local).then(() => {});
+            setProjects(local);
+            saveCloudProjects(supabase, user.id, local).then(() => {});
           } else {
-            setTabs([]);
+            setProjects([]);
           }
         }
         setIsReady(true);
       })
       .catch(() => {
-        setTabs(loadTabs());
+        const local = migrateToProjects();
+        setProjects(local.length > 0 ? local : loadProjects());
         setIsReady(true);
       });
   }, [user?.id]);
 
-  const persistTabs = useCallback(
-    (next: TabData[]) => {
+  const persistProjects = useCallback(
+    (next: ProjectData[]) => {
       if (user) {
-        saveProjects(supabaseRef.current, user.id, next).then(() => {});
+        saveCloudProjects(supabaseRef.current, user.id, next).then(() => {});
       } else {
-        saveTabsLocal(next);
+        saveProjectsLocal(next);
       }
     },
     [user?.id]
@@ -73,7 +89,7 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
 
   return (
     <ProjectsContext.Provider
-      value={{ tabs, setTabs, persistTabs, isReady, isCloud }}
+      value={{ projects, setProjects, persistProjects, isReady, isCloud }}
     >
       {children}
     </ProjectsContext.Provider>
@@ -82,6 +98,7 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
 
 export function useProjects() {
   const ctx = useContext(ProjectsContext);
-  if (!ctx) throw new Error("useProjects must be used within ProjectsProvider");
+  if (!ctx)
+    throw new Error("useProjects must be used within ProjectsProvider");
   return ctx;
 }

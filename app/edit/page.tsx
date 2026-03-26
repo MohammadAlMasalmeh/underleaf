@@ -3,17 +3,24 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Preview, { ResizablePreview } from "@/components/Preview";
 import AIChatPanel from "@/components/AIChatPanel";
+import FileTree from "@/components/FileTree";
 import { useTheme } from "@/components/ThemeProvider";
 import { useProjects } from "@/components/ProjectsProvider";
 import { useAuth } from "@/components/AuthProvider";
 import {
-  TabData,
+  ProjectData,
+  FileNode,
+  TreeNode,
+  getFiles,
+  loadActiveProjectId,
+  saveActiveProjectId,
   loadActiveTabId,
   saveActiveTabId,
   newId,
+  newProjectId,
 } from "@/lib/storage";
 
 const Editor = dynamic(() => import("@/components/Editor"), { ssr: false });
@@ -42,24 +49,26 @@ The proof follows directly from the fundamental theorem of calculus.
 
 \\end{document}`;
 
-function createDefaultTab(): TabData {
-  return { id: newId(), name: "main.tex", source: DEFAULT_LATEX, updatedAt: Date.now() };
+function createDefaultFile(): FileNode {
+  return {
+    id: newId(),
+    name: "main.tex",
+    path: "/main.tex",
+    type: "file",
+    source: DEFAULT_LATEX,
+    updatedAt: Date.now(),
+  };
 }
 
-function isOldBrokenDefault(source: string): boolean {
-  return (
-    source.includes("\\begin{theorem}") &&
-    !source.includes("\\usepackage{amsfonts}") &&
-    !source.includes("\\usepackage{amsthm}")
-  );
-}
-
-function migrateTabsIfNeeded(tabs: TabData[]): TabData[] {
-  return tabs.map((tab) =>
-    isOldBrokenDefault(tab.source)
-      ? { ...tab, source: DEFAULT_LATEX }
-      : tab
-  );
+function createDefaultProject(): ProjectData {
+  const main = createDefaultFile();
+  return {
+    id: newProjectId(),
+    name: "Untitled",
+    files: [main],
+    mainFileId: main.id,
+    updatedAt: Date.now(),
+  };
 }
 
 const CHAT_MIN_HEIGHT = 200;
@@ -138,125 +147,280 @@ function ResizableChatPanel({
 
 export default function EditPage() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const { theme, toggleTheme } = useTheme();
-  const { tabs, setTabs, persistTabs, isReady, isCloud } = useProjects();
+  const { projects, setProjects, persistProjects, isReady, isCloud } = useProjects();
   const { user } = useAuth();
-  const tabsRef = useRef(tabs);
-  const [activeTabId, setActiveTabId] = useState<string>("");
+  const projectsRef = useRef(projects);
+  const [activeProjectId, setActiveProjectId] = useState<string>("");
+  const [activeFileId, setActiveFileId] = useState<string>("");
   const [initialized, setInitialized] = useState(false);
 
-  tabsRef.current = tabs;
+  projectsRef.current = projects;
 
+  // Derive current project state
+  const currentProject = projects.find((p) => p.id === activeProjectId);
+  const treeNodes = currentProject?.files ?? [];
+  const allFiles = getFiles(treeNodes);
+  const activeFile = allFiles.find((f) => f.id === activeFileId);
+  const source = activeFile?.source ?? "";
+  const mainFileId = currentProject?.mainFileId ?? "";
+
+  // --- Initialization ---
   useEffect(() => {
     if (!isReady) return;
+    const projectParam = searchParams.get("project");
     const tabParam = searchParams.get("tab");
     const wantNew = searchParams.get("new") === "1";
-    let loaded = migrateTabsIfNeeded(tabsRef.current);
+    let allProjects = projectsRef.current;
 
     if (wantNew) {
-      const newTab = createDefaultTab();
-      loaded = loaded.length > 0 ? migrateTabsIfNeeded(loaded) : loaded;
-      loaded = [...loaded, newTab];
-      setTabs(loaded);
-      setActiveTabId(newTab.id);
+      const newProj = createDefaultProject();
+      allProjects = [...allProjects, newProj];
+      setProjects(allProjects);
+      persistProjects(allProjects);
+      setActiveProjectId(newProj.id);
+      setActiveFileId(newProj.files[0].id);
       setInitialized(true);
-      persistTabs(loaded);
-      saveActiveTabId(newTab.id);
-      window.history.replaceState(null, "", `/edit?tab=${newTab.id}`);
+      saveActiveProjectId(newProj.id);
+      saveActiveTabId(newProj.files[0].id);
+      window.history.replaceState(null, "", `/edit?project=${newProj.id}&tab=${newProj.files[0].id}`);
       return;
     }
 
-    if (loaded.length === 0) {
-      loaded = [createDefaultTab()];
-      setTabs(loaded);
-      persistTabs(loaded);
-    } else {
-      setTabs(loaded);
+    // Find the right project
+    let projId = "";
+    let fileId = "";
+
+    if (projectParam && allProjects.some((p) => p.id === projectParam)) {
+      projId = projectParam;
+    } else if (tabParam) {
+      // Backward compat: find project containing this file
+      const found = allProjects.find((p) =>
+        getFiles(p.files).some((f) => f.id === tabParam)
+      );
+      if (found) {
+        projId = found.id;
+        fileId = tabParam;
+      }
     }
 
-    const savedActive = loadActiveTabId();
-    let activeId: string;
-    if (tabParam && loaded.some((t) => t.id === tabParam)) {
-      activeId = tabParam;
-    } else if (savedActive && loaded.find((t) => t.id === savedActive)) {
-      activeId = savedActive;
-    } else {
-      activeId = loaded[0].id;
+    if (!projId) {
+      const savedProjId = loadActiveProjectId();
+      if (savedProjId && allProjects.some((p) => p.id === savedProjId)) {
+        projId = savedProjId;
+      } else if (allProjects.length > 0) {
+        projId = allProjects[0].id;
+      }
     }
 
-    setActiveTabId(activeId);
+    if (!projId || allProjects.length === 0) {
+      const newProj = createDefaultProject();
+      allProjects = [newProj];
+      setProjects(allProjects);
+      persistProjects(allProjects);
+      projId = newProj.id;
+      fileId = newProj.files[0].id;
+    }
+
+    const proj = allProjects.find((p) => p.id === projId)!;
+    const projFiles = getFiles(proj.files);
+
+    if (!fileId) {
+      if (tabParam && projFiles.some((f) => f.id === tabParam)) {
+        fileId = tabParam;
+      } else {
+        const savedTabId = loadActiveTabId();
+        if (savedTabId && projFiles.some((f) => f.id === savedTabId)) {
+          fileId = savedTabId;
+        } else {
+          fileId = projFiles[0]?.id ?? "";
+        }
+      }
+    }
+
+    setActiveProjectId(projId);
+    setActiveFileId(fileId);
     setInitialized(true);
-  }, [searchParams, isReady, setTabs, persistTabs]);
+    window.history.replaceState(null, "", `/edit?project=${projId}&tab=${fileId}`);
+  }, [searchParams, isReady, setProjects, persistProjects]);
 
+  // Persist on change
   useEffect(() => {
     if (!initialized) return;
-    persistTabs(tabs);
-  }, [tabs, initialized, persistTabs]);
+    persistProjects(projects);
+  }, [projects, initialized, persistProjects]);
 
   useEffect(() => {
-    if (!initialized || !activeTabId) return;
-    saveActiveTabId(activeTabId);
-  }, [activeTabId, initialized]);
+    if (!initialized || !activeProjectId) return;
+    saveActiveProjectId(activeProjectId);
+  }, [activeProjectId, initialized]);
 
-  const activeTab = tabs.find((t) => t.id === activeTabId);
-  const source = activeTab?.source ?? "";
+  useEffect(() => {
+    if (!initialized || !activeFileId) return;
+    saveActiveTabId(activeFileId);
+  }, [activeFileId, initialized]);
 
-  const setSource = useCallback(
-    (newSource: string) => {
-      setTabs((prev) =>
-        prev.map((t) =>
-          t.id === activeTabId ? { ...t, source: newSource, updatedAt: Date.now() } : t
-        )
+  // --- Project update helper ---
+  const updateCurrentProject = useCallback(
+    (updater: (proj: ProjectData) => ProjectData) => {
+      setProjects((prev) =>
+        prev.map((p) => (p.id === activeProjectId ? updater(p) : p))
       );
     },
-    [activeTabId]
+    [activeProjectId, setProjects]
   );
 
-  const addTab = useCallback(() => {
-    const tab = createDefaultTab();
-    setTabs((prev) => [...prev, tab]);
-    setActiveTabId(tab.id);
-    setReviewing(false);
-    setPdfUrl(null);
-    setCompileError(null);
-    window.history.replaceState(null, "", `/edit?tab=${tab.id}`);
-  }, []);
+  // --- File operations ---
+  const setSource = useCallback(
+    (newSource: string) => {
+      updateCurrentProject((proj) => ({
+        ...proj,
+        updatedAt: Date.now(),
+        files: proj.files.map((f) =>
+          f.id === activeFileId && f.type === "file"
+            ? { ...f, source: newSource, updatedAt: Date.now() }
+            : f
+        ),
+      }));
+    },
+    [activeFileId, updateCurrentProject]
+  );
 
-  const closeTab = useCallback(
-    (id: string) => {
-      setTabs((prev) => {
-        if (prev.length <= 1) return prev;
-        const next = prev.filter((t) => t.id !== id);
-        if (activeTabId === id) {
-          const nextId = next[0].id;
-          setActiveTabId(nextId);
-          window.history.replaceState(null, "", `/edit?tab=${nextId}`);
-        }
-        return next;
+  const handleAddFile = useCallback(
+    (parentPath: string) => {
+      const id = newId();
+      const name = "untitled.tex";
+      const path = parentPath === "/" ? `/${name}` : `${parentPath}/${name}`;
+      const file: FileNode = {
+        id,
+        name,
+        path,
+        type: "file",
+        source: "",
+        updatedAt: Date.now(),
+      };
+      updateCurrentProject((proj) => ({
+        ...proj,
+        updatedAt: Date.now(),
+        files: [...proj.files, file],
+      }));
+      setActiveFileId(id);
+      window.history.replaceState(null, "", `/edit?project=${activeProjectId}&tab=${id}`);
+    },
+    [activeProjectId, updateCurrentProject]
+  );
+
+  const handleAddFolder = useCallback(
+    (parentPath: string) => {
+      const id = newId();
+      const name = "new-folder";
+      const path = parentPath === "/" ? `/${name}` : `${parentPath}/${name}`;
+      updateCurrentProject((proj) => ({
+        ...proj,
+        updatedAt: Date.now(),
+        files: [
+          ...proj.files,
+          { id, name, path, type: "folder" as const },
+        ],
+      }));
+    },
+    [updateCurrentProject]
+  );
+
+  const handleRename = useCallback(
+    (id: string, newName: string) => {
+      updateCurrentProject((proj) => {
+        const node = proj.files.find((f) => f.id === id);
+        if (!node) return proj;
+
+        const oldPath = node.path;
+        const parentPath = oldPath.substring(0, oldPath.lastIndexOf("/")) || "";
+        const newPath = parentPath + "/" + newName;
+
+        // Rename the node and update paths of children if it's a folder
+        const updatedFiles = proj.files.map((f) => {
+          if (f.id === id) {
+            return { ...f, name: newName, path: newPath };
+          }
+          // Update children paths if renaming a folder
+          if (node.type === "folder" && f.path.startsWith(oldPath + "/")) {
+            return { ...f, path: newPath + f.path.slice(oldPath.length) };
+          }
+          return f;
+        });
+
+        return { ...proj, updatedAt: Date.now(), files: updatedFiles };
       });
     },
-    [activeTabId]
+    [updateCurrentProject]
   );
 
-  const renameTab = useCallback((id: string, name: string) => {
-    setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, name, updatedAt: Date.now() } : t)));
-  }, []);
+  const handleDelete = useCallback(
+    (id: string) => {
+      updateCurrentProject((proj) => {
+        const node = proj.files.find((f) => f.id === id);
+        if (!node) return proj;
+        // Don't delete the main file
+        if (node.type === "file" && node.id === proj.mainFileId) return proj;
 
+        let updatedFiles: TreeNode[];
+        if (node.type === "folder") {
+          // Delete folder and all children
+          updatedFiles = proj.files.filter(
+            (f) => f.id !== id && !f.path.startsWith(node.path + "/")
+          );
+        } else {
+          updatedFiles = proj.files.filter((f) => f.id !== id);
+        }
+
+        // If we deleted the active file, switch to main
+        if (id === activeFileId) {
+          setActiveFileId(proj.mainFileId);
+        }
+
+        return { ...proj, updatedAt: Date.now(), files: updatedFiles };
+      });
+    },
+    [activeFileId, updateCurrentProject]
+  );
+
+  const handleSetMain = useCallback(
+    (id: string) => {
+      updateCurrentProject((proj) => ({
+        ...proj,
+        mainFileId: id,
+        updatedAt: Date.now(),
+      }));
+    },
+    [updateCurrentProject]
+  );
+
+  const handleSelectFile = useCallback(
+    (id: string) => {
+      setActiveFileId(id);
+      window.history.replaceState(null, "", `/edit?project=${activeProjectId}&tab=${id}`);
+    },
+    [activeProjectId]
+  );
+
+  // --- Compile & Edit state ---
   const [compiling, setCompiling] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [compileError, setCompileError] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState(false);
   const [preEditSource, setPreEditSource] = useState<string | null>(null);
-  const [editingTabId, setEditingTabId] = useState<string | null>(null);
-  const renameInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setReviewing(false);
     setPreEditSource(null);
-  }, [activeTabId]);
+  }, [activeFileId]);
 
-  const handleCompile = useCallback(async (src: string) => {
+  // Compile uses the main file, not the active file
+  const mainFile = allFiles.find((f) => f.id === mainFileId);
+  const compileSource = mainFile?.source ?? source;
+
+  const handleCompile = useCallback(async (_src?: string) => {
+    const src = _src ?? compileSource;
     setCompiling(true);
     setCompileError(null);
     try {
@@ -274,41 +438,30 @@ export default function EditPage() {
           try {
             errorMessage = await res.text();
             if (!errorMessage) errorMessage = `Compilation failed (${res.status})`;
-          } catch {
-            // ignore
-          }
+          } catch { /* ignore */ }
         }
         setCompileError(errorMessage);
-        setPdfUrl((prev) => {
-          if (prev) URL.revokeObjectURL(prev);
-          return null;
-        });
+        setPdfUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
         return;
       }
       const blob = await res.blob();
-      setPdfUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return URL.createObjectURL(blob);
-      });
+      setPdfUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(blob); });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setCompileError(msg);
-      setPdfUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return null;
-      });
+      setPdfUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
     } finally {
       setCompiling(false);
     }
-  }, []);
+  }, [compileSource]);
 
   const handleDownloadPdf = useCallback(() => {
     if (!pdfUrl) return;
     const a = document.createElement("a");
     a.href = pdfUrl;
-    a.download = `${activeTab?.name || "document"}.pdf`;
+    a.download = `${mainFile?.name || "document"}.pdf`;
     a.click();
-  }, [pdfUrl, activeTab?.name]);
+  }, [pdfUrl, mainFile?.name]);
 
   const handleAcceptEdits = useCallback(() => {
     setReviewing(false);
@@ -335,6 +488,7 @@ export default function EditPage() {
       instruction: string,
       model: string,
       extendedThinking: boolean,
+      chatHistory: Array<{ role: "user" | "assistant"; content: string }>,
       onStep: (step: { id: string; message: string }) => void,
       onThinking: (content: string) => void,
       onDone: (mergedCode: string) => void,
@@ -344,7 +498,7 @@ export default function EditPage() {
       fetch("/api/edit-stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source: currentSource, instruction, model, extendedThinking }),
+        body: JSON.stringify({ source: currentSource, instruction, model, extendedThinking, chatHistory }),
       })
         .then(async (res) => {
           if (!res.ok) {
@@ -354,10 +508,7 @@ export default function EditPage() {
           }
           const reader = res.body?.getReader();
           const decoder = new TextDecoder();
-          if (!reader) {
-            onError("No response body");
-            return;
-          }
+          if (!reader) { onError("No response body"); return; }
           let buffer = "";
           while (true) {
             const { done, value } = await reader.read();
@@ -370,16 +521,11 @@ export default function EditPage() {
               if (!match) continue;
               try {
                 const data = JSON.parse(match[1]);
-                if (data.type === "step")
-                  onStep({ id: data.id, message: data.message });
-                if (data.type === "thinking")
-                  onThinking(data.content ?? "");
+                if (data.type === "step") onStep({ id: data.id, message: data.message });
+                if (data.type === "thinking") onThinking(data.content ?? "");
                 if (data.type === "done") onDone(data.mergedCode ?? "");
-                if (data.type === "error")
-                  onError(data.message ?? "Unknown error");
-              } catch {
-                // skip
-              }
+                if (data.type === "error") onError(data.message ?? "Unknown error");
+              } catch { /* skip */ }
             }
           }
           if (buffer) {
@@ -388,17 +534,13 @@ export default function EditPage() {
               try {
                 const data = JSON.parse(match[1]);
                 if (data.type === "done") onDone(data.mergedCode ?? "");
-                if (data.type === "error")
-                  onError(data.message ?? "Unknown error");
-              } catch {
-                // skip
-              }
+                if (data.type === "error") onError(data.message ?? "Unknown error");
+              } catch { /* skip */ }
             }
           }
         })
         .catch((err: unknown) => {
-          const msg = err instanceof Error ? err.message : String(err);
-          onError(msg);
+          onError(err instanceof Error ? err.message : String(err));
         });
     },
     [source]
@@ -422,7 +564,11 @@ export default function EditPage() {
           >
             UnderLeaf
           </Link>
-          <span className="text-xs text-zinc-400 dark:text-zinc-500">LaTeX</span>
+          {currentProject && (
+            <span className="text-xs text-zinc-400 dark:text-zinc-500">
+              {currentProject.name}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {user && (
@@ -453,7 +599,7 @@ export default function EditPage() {
             )}
           </button>
           <button
-            onClick={() => handleCompile(source)}
+            onClick={() => handleCompile()}
             disabled={compiling}
             className="flex items-center gap-2 rounded-lg bg-blue-600 px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50 dark:bg-blue-600 dark:hover:bg-blue-500"
           >
@@ -478,93 +624,25 @@ export default function EditPage() {
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <aside className="flex w-52 shrink-0 flex-col border-r border-zinc-200 bg-zinc-50/80 dark:border-zinc-800 dark:bg-zinc-900/80">
-          <div className="flex items-center justify-between border-b border-zinc-200 px-2.5 py-2 dark:border-zinc-800">
-            <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
-              Files
-            </span>
-            <button
-              onClick={addTab}
-              className="rounded p-1.5 text-zinc-400 transition-colors hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-300"
-              title="New file"
-            >
-              <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M8 3v10M3 8h10" />
-              </svg>
-            </button>
-          </div>
-          <div className="flex-1 overflow-y-auto py-1">
-            {tabs.map((tab) => (
-              <div
-                key={tab.id}
-                className={`group flex cursor-pointer items-center gap-2 px-2.5 py-1.5 rounded-md ${
-                  tab.id === activeTabId
-                    ? "bg-blue-500/10 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300"
-                    : "text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
-                }`}
-                onClick={() => {
-                  setActiveTabId(tab.id);
-                  router.replace(`/edit?tab=${tab.id}`);
-                }}
-                onDoubleClick={() => {
-                  setEditingTabId(tab.id);
-                  setTimeout(() => renameInputRef.current?.focus(), 0);
-                }}
-              >
-                <svg
-                  className="h-4 w-4 shrink-0 text-zinc-400 dark:text-zinc-500"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                >
-                  <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-                  <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
-                </svg>
-                {editingTabId === tab.id ? (
-                  <input
-                    ref={renameInputRef}
-                    className="min-w-0 flex-1 border-b border-blue-500 bg-transparent text-sm outline-none dark:border-blue-400"
-                    defaultValue={tab.name}
-                    onBlur={(e) => {
-                      renameTab(tab.id, e.target.value || "main.tex");
-                      setEditingTabId(null);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        renameTab(tab.id, e.currentTarget.value || "main.tex");
-                        setEditingTabId(null);
-                      }
-                      if (e.key === "Escape") setEditingTabId(null);
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                ) : (
-                  <span className="min-w-0 truncate text-sm">
-                    {tab.name}
-                  </span>
-                )}
-                {tabs.length > 1 && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      closeTab(tab.id);
-                    }}
-                    className="ml-auto rounded p-0.5 text-zinc-400 opacity-0 transition-all hover:text-red-600 hover:opacity-100 group-hover:opacity-100 dark:text-zinc-500"
-                  >
-                    <svg className="h-3.5 w-3.5" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M3 3l6 6M9 3l-6 6" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
+          <FileTree
+            files={treeNodes}
+            activeFileId={activeFileId}
+            mainFileId={mainFileId}
+            onSelectFile={handleSelectFile}
+            onAddFile={handleAddFile}
+            onAddFolder={handleAddFolder}
+            onRename={handleRename}
+            onDelete={handleDelete}
+            onSetMain={handleSetMain}
+          />
         </aside>
 
         <div className="flex min-w-0 flex-1 overflow-hidden">
           <div className="flex min-w-0 flex-1 flex-col border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
             <div className="shrink-0 border-b border-zinc-200 px-3 py-1.5 dark:border-zinc-800">
-              <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500">Source</span>
+              <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+                {activeFile?.name ?? "Source"}
+              </span>
             </div>
             <div className="min-h-0 flex-1">
               <Editor
@@ -578,7 +656,7 @@ export default function EditPage() {
           </div>
           <ResizablePreview defaultWidth={480} minWidth={280}>
             <Preview
-              source={source}
+              source={compileSource}
               onCompile={handleCompile}
               compiling={compiling}
               pdfUrl={pdfUrl}
@@ -596,18 +674,8 @@ export default function EditPage() {
             <span>Red = removed · Blue = added</span>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={handleAcceptEdits}
-              className="rounded-lg bg-blue-600 px-3.5 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
-            >
-              Accept
-            </button>
-            <button
-              onClick={handleRejectEdits}
-              className="rounded-lg border border-zinc-300 bg-white px-3.5 py-1.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
-            >
-              Reject
-            </button>
+            <button onClick={handleAcceptEdits} className="rounded-lg bg-blue-600 px-3.5 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600">Accept</button>
+            <button onClick={handleRejectEdits} className="rounded-lg border border-zinc-300 bg-white px-3.5 py-1.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700">Reject</button>
           </div>
         </div>
       )}

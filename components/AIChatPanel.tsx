@@ -39,6 +39,7 @@ interface AIChatPanelProps {
     instruction: string,
     model: string,
     extendedThinking: boolean,
+    chatHistory: Array<{ role: "user" | "assistant"; content: string }>,
     onStep: (step: { id: string; message: string }) => void,
     onThinking: (content: string) => void,
     onDone: (mergedCode: string) => void,
@@ -50,12 +51,13 @@ interface AIChatPanelProps {
   reviewing: boolean;
 }
 
-const STEP_ORDER = ["reading", "thinking", "generating"];
+const STEP_ORDER = ["reading", "thinking", "generating", "verifying"];
 
 const STEP_LABELS: Record<string, string> = {
   reading: "Reading document",
   thinking: "Reasoning",
   generating: "Editing",
+  verifying: "Verifying layout",
 };
 
 function updateStepsForStep(
@@ -175,18 +177,40 @@ export default function AIChatPanel({
       },
     ]);
 
+    const history: Array<{ role: "user" | "assistant"; content: string }> = messages
+      .filter(m => m.content && !m.error)
+      .map(m => ({
+        role: m.role,
+        content: m.role === "assistant" && m.mergedCode
+          ? `[Applied LaTeX edit: ${m.content}]`
+          : m.content,
+      }));
+
     onStreamEdit(
       trimmed,
       selectedModel,
       useThinking,
+      history,
       (step) => {
         setMessages((prev) =>
           prev.map((m) => {
             if (m.id !== assistantMsgId || m.role !== "assistant" || !m.steps)
               return m;
+            let steps = m.steps;
+            // Dynamically add the verifying step if the server sends it and it's not already present
+            if (step.id === "verifying" && !steps.some((s) => s.id === "verifying")) {
+              steps = [
+                ...steps,
+                { id: "verifying", message: STEP_LABELS.verifying, status: "pending" as const },
+              ];
+            }
+            // Update the message text for dynamic steps (verifying can change its message)
+            steps = steps.map((s) =>
+              s.id === step.id && step.message ? { ...s, message: step.message } : s
+            );
             return {
               ...m,
-              steps: updateStepsForStep(m.steps, step.id),
+              steps: updateStepsForStep(steps, step.id),
             };
           })
         );
