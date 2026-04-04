@@ -10,3 +10,5 @@ if invoice.account_id != current_user.account_id:
     raise HTTPException(status_code=403, detail='Forbidden')
 @router.post('/search')
 @limiter.limit('60/minute')
+
+@limiter.limit('60/minute')
