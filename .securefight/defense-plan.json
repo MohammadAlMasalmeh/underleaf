@@ -1,0 +1,179 @@
+{
+  "battle_id": "cb235d1e-57e3-4887-b92b-dfcd1deb3106",
+  "github_url": "https://github.com/MohammadAlMasalmeh/underleaf",
+  "website_url": null,
+  "defense_mode": "manual_review",
+  "agent_runtime": "live",
+  "modules": [
+    "auth",
+    "api"
+  ],
+  "recommended_workflow": [
+    "Save this file in your repo root as securefight-defense-plan.json.",
+    "Give the bundle to your implementation agent (for example Claude) to apply selected changes.",
+    "Review generated git diff quickly, run tests, then push to your repository."
+  ],
+  "rounds": [
+    {
+      "round": 1,
+      "vector": "API Key Leakage",
+      "severity": "medium",
+      "target": "api",
+      "result": "blocked",
+      "decision": "propose",
+      "confidence": 0.9,
+      "mitigation": "Layered validation, authorization checks, and secure defaults reduce exploitability for this vector.",
+      "defender_reasoning": "Defender evaluated vector=API Key Leakage, severity=medium, and current hp=100 to choose a blocked outcome. Usual-suspect checks: input validation, authN/authZ, secrets handling, and security logging coverage.",
+      "defense_strategy": "Prioritize api: Layered validation, authorization checks, and secure defaults reduce exploitability for this vector. Then apply code change 'Add layered controls for API Key Leakage'.",
+      "changes": [
+        {
+          "title": "Add layered controls for API Key Leakage",
+          "file_path": "backend/security/hardening.py",
+          "patch": "+ # Add deny-by-default authorization check\n+ # Add allowlist validation for untrusted input\n+ # Add request throttling for high-risk routes",
+          "apply_command": "git apply defense_round_api_key_leakage.patch"
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "vector": "Broken Auth",
+      "severity": "high",
+      "target": "Token refresh endpoint",
+      "result": "partial",
+      "decision": "propose",
+      "confidence": 0.68,
+      "mitigation": "Layered validation, authorization checks, and secure defaults reduce exploitability for this vector.",
+      "defender_reasoning": "Defender evaluated vector=Broken Auth, severity=high, and current hp=100 to choose a partial outcome. Usual-suspect checks: input validation, authN/authZ, secrets handling, and security logging coverage.",
+      "defense_strategy": "Prioritize Token refresh endpoint: Layered validation, authorization checks, and secure defaults reduce exploitability for this vector. Then apply code change 'Add layered controls for Broken Auth'.",
+      "changes": [
+        {
+          "title": "Add layered controls for Broken Auth",
+          "file_path": "backend/security/hardening.py",
+          "patch": "+ # Add deny-by-default authorization check\n+ # Add allowlist validation for untrusted input\n+ # Add request throttling for high-risk routes",
+          "apply_command": "git apply defense_round_broken_auth.patch"
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "vector": "JWT Tampering",
+      "severity": "critical",
+      "target": "auth",
+      "result": "hit",
+      "decision": "propose",
+      "confidence": 0.52,
+      "mitigation": "Layered validation, authorization checks, and secure defaults reduce exploitability for this vector.",
+      "defender_reasoning": "Defender evaluated vector=JWT Tampering, severity=critical, and current hp=95 to choose a hit outcome. Usual-suspect checks: input validation, authN/authZ, secrets handling, and security logging coverage.",
+      "defense_strategy": "Prioritize auth: Layered validation, authorization checks, and secure defaults reduce exploitability for this vector. Then apply code change 'Add layered controls for JWT Tampering'.",
+      "changes": [
+        {
+          "title": "Add layered controls for JWT Tampering",
+          "file_path": "backend/security/hardening.py",
+          "patch": "+ # Add deny-by-default authorization check\n+ # Add allowlist validation for untrusted input\n+ # Add request throttling for high-risk routes",
+          "apply_command": "git apply defense_round_jwt_tampering.patch"
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "vector": "Rate Limit Abuse",
+      "severity": "high",
+      "target": "Public API",
+      "result": "partial",
+      "decision": "propose",
+      "confidence": 0.68,
+      "mitigation": "Layered validation, authorization checks, and secure defaults reduce exploitability for this vector.",
+      "defender_reasoning": "Defender evaluated vector=Rate Limit Abuse, severity=high, and current hp=80 to choose a partial outcome. Usual-suspect checks: input validation, authN/authZ, secrets handling, and security logging coverage.",
+      "defense_strategy": "Prioritize Public API: Layered validation, authorization checks, and secure defaults reduce exploitability for this vector. Then apply code change 'Add layered controls for Rate Limit Abuse'.",
+      "changes": [
+        {
+          "title": "Add layered controls for Rate Limit Abuse",
+          "file_path": "backend/security/hardening.py",
+          "patch": "+ # Add deny-by-default authorization check\n+ # Add allowlist validation for untrusted input\n+ # Add request throttling for high-risk routes",
+          "apply_command": "git apply defense_round_rate_limit_abuse.patch"
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "vector": "API Key Leakage",
+      "severity": "critical",
+      "target": "api",
+      "result": "hit",
+      "decision": "propose",
+      "confidence": 0.52,
+      "mitigation": "Layered validation, authorization checks, and secure defaults reduce exploitability for this vector.",
+      "defender_reasoning": "Defender evaluated vector=API Key Leakage, severity=critical, and current hp=75 to choose a hit outcome. Usual-suspect checks: input validation, authN/authZ, secrets handling, and security logging coverage.",
+      "defense_strategy": "Prioritize api: Layered validation, authorization checks, and secure defaults reduce exploitability for this vector. Then apply code change 'Add layered controls for API Key Leakage'.",
+      "changes": [
+        {
+          "title": "Add layered controls for API Key Leakage",
+          "file_path": "backend/security/hardening.py",
+          "patch": "+ # Add deny-by-default authorization check\n+ # Add allowlist validation for untrusted input\n+ # Add request throttling for high-risk routes",
+          "apply_command": "git apply defense_round_api_key_leakage.patch"
+        }
+      ]
+    },
+    {
+      "round": 6,
+      "vector": "Mass Assignment",
+      "severity": "high",
+      "target": "User profile update",
+      "result": "partial",
+      "decision": "propose",
+      "confidence": 0.68,
+      "mitigation": "Layered validation, authorization checks, and secure defaults reduce exploitability for this vector.",
+      "defender_reasoning": "Defender evaluated vector=Mass Assignment, severity=high, and current hp=60 to choose a partial outcome. Usual-suspect checks: input validation, authN/authZ, secrets handling, and security logging coverage.",
+      "defense_strategy": "Prioritize User profile update: Layered validation, authorization checks, and secure defaults reduce exploitability for this vector. Then apply code change 'Add layered controls for Mass Assignment'.",
+      "changes": [
+        {
+          "title": "Add layered controls for Mass Assignment",
+          "file_path": "backend/security/hardening.py",
+          "patch": "+ # Add deny-by-default authorization check\n+ # Add allowlist validation for untrusted input\n+ # Add request throttling for high-risk routes",
+          "apply_command": "git apply defense_round_mass_assignment.patch"
+        }
+      ]
+    },
+    {
+      "round": 7,
+      "vector": "IDOR",
+      "severity": "critical",
+      "target": "Object access endpoint",
+      "result": "partial",
+      "decision": "propose",
+      "confidence": 0.68,
+      "mitigation": "Enforce ownership checks on every object access, not just at route level.",
+      "defender_reasoning": "Defender evaluated vector=IDOR, severity=critical, and current hp=55 to choose a partial outcome. Usual-suspect checks: input validation, authN/authZ, secrets handling, and security logging coverage.",
+      "defense_strategy": "Prioritize Object access endpoint: Enforce ownership checks on every object access, not just at route level. Then apply code change 'Verify resource ownership per request'.",
+      "changes": [
+        {
+          "title": "Verify resource ownership per request",
+          "file_path": "backend/api/invoices.py",
+          "patch": "+ if invoice.account_id != current_user.account_id:\n+     raise HTTPException(status_code=403, detail='Forbidden')",
+          "apply_command": "git apply defense_round_idor.patch"
+        }
+      ]
+    },
+    {
+      "round": 8,
+      "vector": "JWT Tampering",
+      "severity": "critical",
+      "target": "API authentication middleware",
+      "result": "partial",
+      "decision": "propose",
+      "confidence": 0.68,
+      "mitigation": "Layered validation, authorization checks, and secure defaults reduce exploitability for this vector.",
+      "defender_reasoning": "Defender evaluated vector=JWT Tampering, severity=critical, and current hp=50 to choose a partial outcome. Usual-suspect checks: input validation, authN/authZ, secrets handling, and security logging coverage.",
+      "defense_strategy": "Prioritize API authentication middleware: Layered validation, authorization checks, and secure defaults reduce exploitability for this vector. Then apply code change 'Add layered controls for JWT Tampering'.",
+      "changes": [
+        {
+          "title": "Add layered controls for JWT Tampering",
+          "file_path": "backend/security/hardening.py",
+          "patch": "+ # Add deny-by-default authorization check\n+ # Add allowlist validation for untrusted input\n+ # Add request throttling for high-risk routes",
+          "apply_command": "git apply defense_round_jwt_tampering.patch"
+        }
+      ]
+    }
+  ],
+  "website_reports": []
+}
