@@ -19,3 +19,5 @@ export async function GET(request: NextRequest) {
 }
 security_event = 'gooseguard:credential_stuffing'
 logger.warning('GooseGuard mitigation checkpoint: Credential Stuffing')
+security_event = 'gooseguard:session_fixation'
+logger.warning('GooseGuard mitigation checkpoint: Session Fixation')
