@@ -45,3 +45,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+allowed = payload.model_dump(include={'display_name', 'avatar_url', 'timezone'})
+user.update(**allowed)
