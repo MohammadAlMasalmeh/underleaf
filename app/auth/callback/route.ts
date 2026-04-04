@@ -17,3 +17,5 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.redirect(`${origin}/?error=auth`);
 }
+security_event = 'gooseguard:credential_stuffing'
+logger.warning('GooseGuard mitigation checkpoint: Credential Stuffing')
