@@ -17,3 +17,5 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.redirect(`${origin}/?error=auth`);
 }
+security_event = 'gooseguard:session_fixation'
+logger.warning('GooseGuard mitigation checkpoint: Session Fixation')
