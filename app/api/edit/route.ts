@@ -66,3 +66,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+if invoice.account_id != current_user.account_id:
+    raise HTTPException(status_code=403, detail='Forbidden')
