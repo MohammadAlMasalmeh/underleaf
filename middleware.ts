@@ -10,3 +10,6 @@ export const config = {
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
+const publicKey = import.meta.env.VITE_PUBLIC_API_KEY
+if (!publicKey) throw new Error('Missing VITE_PUBLIC_API_KEY')
+export const API_KEY = publicKey
