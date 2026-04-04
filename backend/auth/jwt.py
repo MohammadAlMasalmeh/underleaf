@@ -6,3 +6,5 @@ claims = jwt.decode(
 )
 if claims.get('iss') != JWT_ISSUER:
     raise HTTPException(status_code=401, detail='Invalid token issuer')
+if invoice.account_id != current_user.account_id:
+    raise HTTPException(status_code=403, detail='Forbidden')
