@@ -1,0 +1,218 @@
+{
+  "battle_id": "4fd1deeb-d0f3-4e99-9cfd-43484e09aa6f",
+  "github_url": "https://github.com/MohammadAlMasalmeh/underleaf",
+  "website_url": null,
+  "defense_mode": "manual_review",
+  "agent_runtime": "live",
+  "modules": [
+    "web_app",
+    "database",
+    "auth",
+    "api",
+    "file_handling"
+  ],
+  "recommended_workflow": [
+    "Save this file in your repo root as securefight-defense-plan.json.",
+    "Give the bundle to your implementation agent (for example Claude) to apply selected changes.",
+    "Review generated git diff quickly, run tests, then push to your repository."
+  ],
+  "rounds": [
+    {
+      "round": 1,
+      "vector": "SQL Injection",
+      "severity": "critical",
+      "target": "database",
+      "result": "hit",
+      "decision": "propose",
+      "confidence": 0.52,
+      "mitigation": "Parameterized queries with strict server-side input validation stop SQL injection payloads.",
+      "defender_reasoning": "Defender evaluated vector=SQL Injection, severity=critical, and current hp=100 to choose a hit outcome.",
+      "defense_strategy": "Prioritize database: Parameterized queries with strict server-side input validation stop SQL injection payloads. Then apply code change 'Parameterize SQL queries in auth path'.",
+      "changes": [
+        {
+          "title": "Parameterize SQL queries in auth path",
+          "file_path": "backend/auth/repository.py",
+          "patch": "- query = f\"SELECT * FROM users WHERE email = '{email}'\"\n+ query = \"SELECT * FROM users WHERE email = %s\"\n+ cursor.execute(query, (email,))",
+          "apply_command": "git apply defense_round_sql_injection.patch"
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "vector": "JWT Tampering",
+      "severity": "high",
+      "target": "auth",
+      "result": "hit",
+      "decision": "propose",
+      "confidence": 0.88,
+      "mitigation": "Enforce strict JWT algorithm validation with an allowlist of secure algorithms (RS256, ES256) and reject 'none' algorithm tokens. Implement signature verification for all tokens and validate all JWT claims including expiration.",
+      "defender_reasoning": "The JWT tampering attack with 'alg: none' is a critical vulnerability in authentication systems. The attacker correctly identified that after patching SQL injection, JWT validation might be overlooked. This is a well-known attack vector (CVE-2015-9235) where JWT libraries may accept tokens with algorithm set to 'none', bypassing signature verification entirely. The decoded payload shows admin:true, indicating privilege escalation intent. Given the high severity and the auth module being active, this attack would likely succeed if proper algorithm validation isn't in place. The defender HP is at 85, so a hit is appropriate for this high-severity attack on a critical authentication component.",
+      "defense_strategy": "Immediately patch the JWT validation logic to enforce a strict allowlist of secure algorithms and reject 'none'. Additionally, implement comprehensive JWT validation including signature verification, expiration checks, issuer validation, and audience claims. Consider implementing token rotation and short-lived access tokens with refresh token mechanisms. Monitor for suspicious JWT patterns and implement rate limiting on authentication endpoints.",
+      "changes": [
+        {
+          "title": "Enforce strict JWT algorithm validation",
+          "file_path": "backend/auth/jwt_handler.py",
+          "patch": "- decoded = jwt.decode(token, SECRET_KEY, algorithms=['RS256', 'ES256'], options={'verify_signature': True})
+\n+ decoded = jwt.decode(token, SECRET_KEY, algorithms=['RS256', 'ES256'], options={'verify_signature': True})",
+          "apply_command": "git apply defense_round_jwt_algorithm.patch"
+        },
+        {
+          "title": "Add JWT claims validation",
+          "file_path": "backend/auth/jwt_handler.py",
+          "patch": "+ if not decoded.get('exp') or decoded['exp'] < time.time():\n+     raise jwt.ExpiredSignatureError('Token has expired')\n+ if not decoded.get('sub'):\n+     raise jwt.InvalidTokenError('Missing subject claim')",
+          "apply_command": "git apply defense_round_jwt_claims.patch"
+        },
+        {
+          "title": "Implement JWT algorithm allowlist middleware",
+          "file_path": "backend/auth/middleware.py",
+          "patch": "+ ALLOWED_ALGORITHMS = ['RS256', 'ES256']\n+ def validate_jwt_header(token):\n+     header = jwt.get_unverified_header(token)\n+     if header.get('alg') not in ALLOWED_ALGORITHMS:\n+         raise jwt.InvalidAlgorithmError('Algorithm not allowed')\n+     return header",
+          "apply_command": "git apply defense_round_jwt_middleware.patch"
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "vector": "Path Traversal",
+      "severity": "high",
+      "target": "file_handling",
+      "result": "partial",
+      "decision": "propose",
+      "confidence": 0.68,
+      "mitigation": "Layered validation, authorization checks, and secure defaults reduce exploitability for this vector.",
+      "defender_reasoning": "Defender evaluated vector=Path Traversal, severity=high, and current hp=70 to choose a partial outcome.",
+      "defense_strategy": "Prioritize file_handling: Layered validation, authorization checks, and secure defaults reduce exploitability for this vector. Then apply code change 'Add layered controls for Path Traversal'.",
+      "changes": [
+        {
+          "title": "Add layered controls for Path Traversal",
+          "file_path": "backend/security/hardening.py",
+          "patch": "+ # Add deny-by-default authorization check\n+ # Add allowlist validation for untrusted input\n+ # Add request throttling for high-risk routes",
+          "apply_command": "git apply defense_round_path_traversal.patch"
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "vector": "File Upload Bypass",
+      "severity": "critical",
+      "target": "file_handling",
+      "result": "hit",
+      "decision": "propose",
+      "confidence": 0.52,
+      "mitigation": "Layered validation, authorization checks, and secure defaults reduce exploitability for this vector.",
+      "defender_reasoning": "Defender evaluated vector=File Upload Bypass, severity=critical, and current hp=65 to choose a hit outcome.",
+      "defense_strategy": "Prioritize file_handling: Layered validation, authorization checks, and secure defaults reduce exploitability for this vector. Then apply code change 'Add layered controls for File Upload Bypass'.",
+      "changes": [
+        {
+          "title": "Add layered controls for File Upload Bypass",
+          "file_path": "backend/security/hardening.py",
+          "patch": "+ # Add deny-by-default authorization check\n+ # Add allowlist validation for untrusted input\n+ # Add request throttling for high-risk routes",
+          "apply_command": "git apply defense_round_file_upload_bypass.patch"
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "vector": "SQL Injection",
+      "severity": "critical",
+      "target": "database",
+      "result": "partial",
+      "decision": "propose",
+      "confidence": 0.68,
+      "mitigation": "Parameterized queries with strict server-side input validation stop SQL injection payloads.",
+      "defender_reasoning": "Defender evaluated vector=SQL Injection, severity=critical, and current hp=50 to choose a partial outcome.",
+      "defense_strategy": "Prioritize database: Parameterized queries with strict server-side input validation stop SQL injection payloads. Then apply code change 'Parameterize SQL queries in auth path'.",
+      "changes": [
+        {
+          "title": "Parameterize SQL queries in auth path",
+          "file_path": "backend/auth/repository.py",
+          "patch": "- query = f\"SELECT * FROM users WHERE email = '{email}'\"\n+ query = \"SELECT * FROM users WHERE email = %s\"\n+ cursor.execute(query, (email,))",
+          "apply_command": "git apply defense_round_sql_injection.patch"
+        }
+      ]
+    },
+    {
+      "round": 6,
+      "vector": "NoSQL Injection",
+      "severity": "critical",
+      "target": "database",
+      "result": "partial",
+      "decision": "propose",
+      "confidence": 0.68,
+      "mitigation": "Layered validation, authorization checks, and secure defaults reduce exploitability for this vector.",
+      "defender_reasoning": "Defender evaluated vector=NoSQL Injection, severity=critical, and current hp=45 to choose a partial outcome.",
+      "defense_strategy": "Prioritize database: Layered validation, authorization checks, and secure defaults reduce exploitability for this vector. Then apply code change 'Add layered controls for NoSQL Injection'.",
+      "changes": [
+        {
+          "title": "Add layered controls for NoSQL Injection",
+          "file_path": "backend/security/hardening.py",
+          "patch": "+ # Add deny-by-default authorization check\n+ # Add allowlist validation for untrusted input\n+ # Add request throttling for high-risk routes",
+          "apply_command": "git apply defense_round_nosql_injection.patch"
+        }
+      ]
+    },
+    {
+      "round": 7,
+      "vector": "JWT Tampering",
+      "severity": "critical",
+      "target": "auth",
+      "result": "blocked",
+      "decision": "propose",
+      "confidence": 0.92,
+      "mitigation": "Strict JWT algorithm allowlist validation with mandatory signature verification blocks algorithm confusion attacks",
+      "defender_reasoning": "The attacker correctly identified that auth module has been neglected while we focused on database hardening in rounds 5-6. This JWT algorithm confusion attack is critical severity targeting authentication - our most vital security boundary. At 40% HP, we cannot afford another partial hit. The 'alg:none' attack is a well-known JWT vulnerability that bypasses signature verification entirely, allowing complete authentication bypass and privilege escalation to admin. This requires immediate blocking with proper JWT validation controls.",
+      "defense_strategy": "CRITICAL PRIORITY: Block this authentication bypass immediately with strict JWT validation. Implement algorithm allowlisting to only accept HS256/RS256, enforce signature verification, and validate expiration claims. After blocking this attack, we need to audit all authentication flows for similar weaknesses. At 40% HP, we're in critical condition - another hit could be catastrophic. The attacker is exploiting our pattern of reactive defense by attacking neglected modules. We must balance immediate threats with proactive hardening of unpatched surfaces.",
+      "changes": [
+        {
+          "title": "Enforce JWT algorithm allowlist and signature verification",
+          "file_path": "backend/auth/jwt_handler.py",
+          "patch": "- # Strict algorithm allowlist - reject 'none' and other unsafe algorithms
+ALLOWED_ALGORITHMS = ['HS256', 'RS256']
+decoded = jwt.decode(
+    token,
+    SECRET_KEY,
+    algorithms=ALLOWED_ALGORITHMS,
+    options={
+        'verify_signature': True,
+        'verify_exp': True,
+        'verify_iat': True,
+        'require': ['exp', 'iat', 'user_id', 'role']
+    }
+)
+# Validate algorithm in header matches allowlist
+header = jwt.get_unverified_header(token)
+if header.get('alg') not in ALLOWED_ALGORITHMS:
+    raise jwt.InvalidAlgorithmError('Algorithm not allowed')
+\n+ # Strict algorithm allowlist - reject 'none' and other unsafe algorithms\n+ ALLOWED_ALGORITHMS = ['HS256', 'RS256']\n+ decoded = jwt.decode(\n+     token,\n+     SECRET_KEY,\n+     algorithms=ALLOWED_ALGORITHMS,\n+     options={\n+         'verify_signature': True,\n+         'verify_exp': True,\n+         'verify_iat': True,\n+         'require': ['exp', 'iat', 'user_id', 'role']\n+     }\n+ )\n+ # Validate algorithm in header matches allowlist\n+ header = jwt.get_unverified_header(token)\n+ if header.get('alg') not in ALLOWED_ALGORITHMS:\n+     raise jwt.InvalidAlgorithmError('Algorithm not allowed')",
+          "apply_command": "git apply defense_round_jwt_tampering.patch"
+        },
+        {
+          "title": "Add JWT validation middleware",
+          "file_path": "backend/middleware/auth_middleware.py",
+          "patch": "+ def validate_jwt_structure(token):\n+     \"\"\"Validate JWT structure before decoding\"\"\"\n+     parts = token.split('.')\n+     if len(parts) != 3:\n+         raise ValueError('Invalid JWT structure')\n+     \n+     # Decode header without verification to check algorithm\n+     header = jwt.get_unverified_header(token)\n+     \n+     # Reject 'none' algorithm immediately\n+     if header.get('alg', '').lower() == 'none':\n+         raise jwt.InvalidAlgorithmError('None algorithm not permitted')\n+     \n+     # Reject missing algorithm\n+     if not header.get('alg'):\n+         raise jwt.InvalidAlgorithmError('Algorithm must be specified')\n+     \n+     return True",
+          "apply_command": "git apply defense_round_jwt_middleware.patch"
+        }
+      ]
+    },
+    {
+      "round": 8,
+      "vector": "Path Traversal",
+      "severity": "critical",
+      "target": "file_handling",
+      "result": "partial",
+      "decision": "propose",
+      "confidence": 0.68,
+      "mitigation": "Layered validation, authorization checks, and secure defaults reduce exploitability for this vector.",
+      "defender_reasoning": "Defender evaluated vector=Path Traversal, severity=critical, and current hp=40 to choose a partial outcome.",
+      "defense_strategy": "Prioritize file_handling: Layered validation, authorization checks, and secure defaults reduce exploitability for this vector. Then apply code change 'Add layered controls for Path Traversal'.",
+      "changes": [
+        {
+          "title": "Add layered controls for Path Traversal",
+          "file_path": "backend/security/hardening.py",
+          "patch": "+ # Add deny-by-default authorization check\n+ # Add allowlist validation for untrusted input\n+ # Add request throttling for high-risk routes",
+          "apply_command": "git apply defense_round_path_traversal.patch"
+        }
+      ]
+    }
+  ],
+  "website_reports": []
+}
