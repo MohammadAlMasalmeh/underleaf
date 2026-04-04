@@ -1,0 +1,228 @@
+{
+  "battle_id": "c1d58772-d2cd-487c-8a0c-5d74586ecb55",
+  "github_url": "https://github.com/MohammadAlMasalmeh/underleaf",
+  "defense_mode": "manual_review",
+  "agent_runtime": "live",
+  "modules": [
+    "web_app",
+    "api",
+    "auth"
+  ],
+  "recommended_workflow": [
+    "Save this file in your repo root as securefight-defense-plan.json.",
+    "Give the bundle to your implementation agent (for example Claude) to apply selected changes.",
+    "Review generated git diff quickly, run tests, then push to your repository."
+  ],
+  "rounds": [
+    {
+      "round": 1,
+      "vector": "XSS",
+      "severity": "medium",
+      "target": "web_app",
+      "result": "partial",
+      "decision": "propose",
+      "confidence": 1.0,
+      "mitigation": "Implement input validation and sanitization to prevent XSS attacks.",
+      "changes": [
+        {
+          "title": "Implement input validation and sanitization",
+          "file_path": "web_app/input_validation.py",
+          "patch": "import html\n\ndef sanitize_input(user_input):\n    return html.escape(user_input)",
+          "apply_command": "pip install html"
+        },
+        {
+          "title": "Implement content security policy",
+          "file_path": "web_app/settings.py",
+          "patch": "CSP_SCRIPT_SRC = [\"'self'\"]\nCSP_POLICY = {\n    'default-src': [\"'self'\"],\n    'script-src': CSP_SCRIPT_SRC,\n}",
+          "apply_command": "pip install django-csp"
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "vector": "CSRF",
+      "severity": "high",
+      "target": "web_app",
+      "result": "partial",
+      "decision": "propose",
+      "confidence": 0.8,
+      "mitigation": "Implement CSRF protection mechanisms to prevent CSRF attacks.",
+      "changes": [
+        {
+          "title": "Implement CSRF token-based protection",
+          "file_path": "web_app/views.py",
+          "patch": "from django.views.decorators.csrf import csrf_protect\n\n@csrf_protect\ndef sensitive_view(request):\n    # Sensitive view logic",
+          "apply_command": "pip install django"
+        },
+        {
+          "title": "Verify CSRF token on sensitive requests",
+          "file_path": "web_app/middleware.py",
+          "patch": "from django.middleware.csrf import CsrfViewMiddleware\n\nclass CustomCsrfViewMiddleware(CsrfViewMiddleware):\n    def process_view(self, request, view_func, view_args, view_kwargs):\n        if request.method in ('POST', 'PUT', 'PATCH', 'DELETE'):\n            if not getattr(view_func, 'csrf_exempt', False):\n                return self._reject(request, 403)",
+          "apply_command": "pip install django"
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "vector": "Clickjacking",
+      "severity": "medium",
+      "target": "web_app",
+      "result": "partial",
+      "decision": "propose",
+      "confidence": 0.9,
+      "mitigation": "Implement X-Frame-Options and Content Security Policy (CSP) headers to prevent Clickjacking attacks.",
+      "changes": [
+        {
+          "title": "Implement X-Frame-Options header",
+          "file_path": "web_app/settings.py",
+          "patch": "X_FRAME_OPTIONS = 'DENY'",
+          "apply_command": "pip install django"
+        },
+        {
+          "title": "Implement Content Security Policy (CSP) header",
+          "file_path": "web_app/settings.py",
+          "patch": "CSP_DEFAULT_SRC = [\"'self'\"]",
+          "apply_command": "pip install django-csp"
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "vector": "IDOR",
+      "severity": "high",
+      "target": "api",
+      "result": "partial",
+      "decision": "propose",
+      "confidence": 0.8,
+      "mitigation": "Implement access control and input validation mechanisms to prevent IDOR attacks in the API module.",
+      "changes": [
+        {
+          "title": "Implement RBAC in the API module",
+          "file_path": "api/views.py",
+          "patch": "from api.models import User\n\nclass UserDataView(APIView):\n    def get(self, request, user_id):\n        user = User.objects.get(id=user_id)\n        if user.id == request.user.id:\n            return Response(user.data)\n        else:\n            return Response(status=403)",
+          "apply_command": "pip install djangorestframework"
+        },
+        {
+          "title": "Implement input validation in the API module",
+          "file_path": "api/views.py",
+          "patch": "from django.utils.html import escape\n\nclass UserDataView(APIView):\n    def get(self, request, user_id):\n        user_id = escape(user_id)\n        user = User.objects.get(id=user_id)\n        if user.id == request.user.id:\n            return Response(user.data)\n        else:\n            return Response(status=403)",
+          "apply_command": "pip install djangorestframework"
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "vector": "API Key Leakage",
+      "severity": "high",
+      "target": "api",
+      "result": "partial",
+      "decision": "propose",
+      "confidence": 0.8,
+      "mitigation": "Implement secure storage and handling of API keys to prevent leakage.",
+      "changes": [
+        {
+          "title": "Store API keys securely",
+          "file_path": "api/settings.py",
+          "patch": "import os\nAPI_KEY = os.environ.get('API_KEY')",
+          "apply_command": "export API_KEY=<secure_api_key>"
+        },
+        {
+          "title": "Implement rate limiting on API endpoints",
+          "file_path": "api/views.py",
+          "patch": "from rest_framework.throttling import UserRateThrottle\n\nclass UserDataView(APIView):\n    throttle_classes = [UserRateThrottle]",
+          "apply_command": "pip install djangorestframework"
+        },
+        {
+          "title": "Implement monitoring on API endpoints",
+          "file_path": "api/views.py",
+          "patch": "import logging\n\nlogger = logging.getLogger(__name__)\n\nclass UserDataView(APIView):\n    def get(self, request, user_id):\n        logger.info(f'API request for user_id: {user_id}')",
+          "apply_command": "pip install django-logging"
+        }
+      ]
+    },
+    {
+      "round": 6,
+      "vector": "Clickjacking",
+      "severity": "medium",
+      "target": "web_app",
+      "result": "partial",
+      "decision": "propose",
+      "confidence": 0.8,
+      "mitigation": "Implement clickjacking protection mechanisms to prevent the web application from being embedded in a malicious website.",
+      "changes": [
+        {
+          "title": "Add X-Frame-Options header",
+          "file_path": "web_app/views.py",
+          "patch": "from django.http import HttpResponse\n\ndef index(request):\n    response = HttpResponse(\"Welcome to the web application\")\n    response['X-Frame-Options'] = 'SAMEORIGIN'\n    return response",
+          "apply_command": "pip install django"
+        },
+        {
+          "title": "Implement Content Security Policy",
+          "file_path": "web_app/settings.py",
+          "patch": "CSP_DEFAULT_SRC = [\"'self'\", 'https://trusted-domain.com']\nCSP_STYLE_SRC = [\"'self'\", 'https://trusted-domain.com']\nCSP_SCRIPT_SRC = [\"'self'\", 'https://trusted-domain.com']\nCSP_FRAME_SRC = [\"'self'\", 'https://trusted-domain.com']",
+          "apply_command": "pip install django-csp"
+        }
+      ]
+    },
+    {
+      "round": 7,
+      "vector": "IDOR",
+      "severity": "high",
+      "target": "api",
+      "result": "partial",
+      "decision": "propose",
+      "confidence": 0.8,
+      "mitigation": "Implement access control and input validation mechanisms to prevent Insecure Direct Object Reference (IDOR) attacks on the API module.",
+      "changes": [
+        {
+          "title": "Implement role-based access control",
+          "file_path": "api/views.py",
+          "patch": "from django.contrib.auth.models import User\n\nclass UserDataView(APIView):\n    def get(self, request, user_id):\n        user = User.objects.get(id=user_id)\n        if request.user.is_superuser or request.user == user:\n            return Response(user.data)\n        else:\n            return Response(\"Unauthorized access\", status=403)",
+          "apply_command": "pip install django"
+        },
+        {
+          "title": "Validate and sanitize user input",
+          "file_path": "api/views.py",
+          "patch": "from django.utils.html import escape\n\nclass UserDataView(APIView):\n    def get(self, request, user_id):\n        sanitized_user_id = escape(user_id)\n        user = User.objects.get(id=sanitized_user_id)\n        if request.user.is_superuser or request.user == user:\n            return Response(user.data)\n        else:\n            return Response(\"Unauthorized access\", status=403)",
+          "apply_command": "pip install django"
+        },
+        {
+          "title": "Implement server-side authorization checks",
+          "file_path": "api/views.py",
+          "patch": "from django.contrib.auth.decorators import permission_required\n\n@permission_required('api.view_user_data')\nclass UserDataView(APIView):\n    def get(self, request, user_id):\n        sanitized_user_id = escape(user_id)\n        user = User.objects.get(id=sanitized_user_id)\n        return Response(user.data)",
+          "apply_command": "pip install django-guardian"
+        }
+      ]
+    },
+    {
+      "round": 8,
+      "vector": "API Key Leakage",
+      "severity": "high",
+      "target": "api",
+      "result": "partial",
+      "decision": "propose",
+      "confidence": 0.8,
+      "mitigation": "Implement secure API key management and rotation policies to prevent API key leakage in the API module.",
+      "changes": [
+        {
+          "title": "Store API keys securely",
+          "file_path": "api/settings.py",
+          "patch": "import os\n\nAPI_KEY = os.environ.get('API_KEY')",
+          "apply_command": "pip install python-dotenv"
+        },
+        {
+          "title": "Implement API key rotation policy",
+          "file_path": "api/views.py",
+          "patch": "from datetime import datetime, timedelta\n\nclass APIKeyRotationView(APIView):\n    def post(self, request):\n        current_key = request.headers.get('X-API-Key')\n        new_key = generate_new_api_key()\n        update_api_key(current_key, new_key)\n        return Response({'new_api_key': new_key})",
+          "apply_command": "pip install django"
+        },
+        {
+          "title": "Enforce principle of least privilege",
+          "file_path": "api/permissions.py",
+          "patch": "from rest_framework.permissions import BasePermission\n\nclass ReadOnlyPermission(BasePermission):\n    def has_permission(self, request, view):\n        return request.method in ['GET', 'HEAD', 'OPTIONS']",
+          "apply_command": "pip install djangorestframework"
+        }
+      ]
+    }
+  ]
+}
